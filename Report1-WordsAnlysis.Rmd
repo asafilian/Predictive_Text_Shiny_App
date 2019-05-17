@@ -1,0 +1,682 @@
+---
+title: "Uni-Gram Analysis and Data Preprocessing"
+subtitle: 'For a "Predictive Text Product"'
+author: "Aliakbar Safilian^[a.a.safilian@gmail.com]"
+date: "May 9, 2019"
+output: 
+        bookdown::pdf_document2:
+          number_sections: yes
+urlcolor: blue
+header-includes:
+  - \usepackage{color}
+  - \usepackage{float}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.align="center", echo = FALSE, cache = TRUE, comment = "", fig.pos = 'H')
+```
+
+```{r libraries, warning=FALSE, message=FALSE, cache=FALSE}
+require(quanteda)
+require(readr)
+require(stopwords)
+require(tidytext)
+require(dplyr)
+require(ngram)
+require(knitr)
+require(kableExtra)
+require(stringr)
+require("ggplot2")
+source("loading.R")
+```
+
+# Introduction
+## The project
+Around the world, people are spending an increasing amount of time on their mobile
+devices for email, social networking, banking and a whole range of other activities. However,
+typing on mobile devices can be a serious pain. 
+
+In this project, we aim at building a predictive text product that makes it easier for people to type. To this end, we start with analyzing a large corpus of text documents to discover the structure in the data and see how words are put together. The process involves cleaning and analyzing text data, then building and sampling from a predictive text model. Finally, we will build a predictive text shiny app. 
+
+This project is the capstone project for the Data Sciene Specialization offered by John Hopkins University. The data for this project has been provided by the Swiftkey company. SwiftKey has built a smart keyboard for mobile devices. One cornerstone of their smart keyboard is predictive text models. The basic training data can be found  [here](#
+https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip). The data is from a corpus called HC Corpora. We may need to collect/use other data during the project. 
+
+There are four different databases, each for one specific language. The languages include German, English, Finnish, and Russian. In this project, we deal with the English database. There are the following textual files in the English database: 
+
+- `en_us.blogs.txt` 
+- `en_us.news.txt` 
+- `en_us.twitter.txt` 
+
+Some information of the raw data is represented in the following table: 
+
+```{r tab-raw-info, fig.cap="Raw Data - Information"}
+# Raw data info
+blogs <- loadtext("blogs")
+twitter <- loadtext("twitter")
+news <- loadtext("news")
+
+size_blogs <- round((file.info("rawData/en_US/en_US.blogs.txt")$size)/1000000, 2)
+size_twitter <- round((file.info("rawData/en_US/en_US.twitter.txt")$size)/1000000, 2)
+size_news <- round((file.info("rawData/en_US/en_US.news.txt")$size)/1000000, 2)
+
+lines_blogs <- length(blogs)
+lines_twitter <- length(twitter)
+lines_news <- length(news)
+
+words_blogs <- round(wordcount(blogs)/1000000, 0)
+words_twitter <- round(wordcount(twitter)/1000000, 0)
+words_news <- round(wordcount(news)/1000000, 0)
+
+length_blogs <- sapply(blogs, nchar)
+max_length_blogs <- max(length_blogs)
+min_length_blogs <- min(length_blogs)
+min_max_chars_blogs <- paste(as.character(min_length_blogs), " - ",
+                             as.character(max_length_blogs), sep = "")
+
+length_twitter <- sapply(twitter, nchar)
+max_length_twitter <- max(length_twitter)
+min_length_twitter <- min(length_twitter)
+min_max_chars_twitter <- paste(as.character(min_length_twitter), " - ",
+                               as.character(max_length_twitter), sep = "")
+
+length_news <- sapply(news, nchar)
+max_length_news <- max(length_news)
+min_length_news <- min(length_news)
+min_max_chars_news <- paste(as.character(min_length_news), " - ",
+                            as.character(max_length_news), sep = "")
+
+info_blogs <- c("Blogs", size_blogs, lines_blogs, 
+                paste("+", as.character(words_blogs), sep = ""), 
+                min_max_chars_blogs)
+
+info_twitter <- c("Twitter", size_twitter, lines_twitter, 
+                  paste("+", as.character(words_twitter), sep = ""), 
+                  min_max_chars_twitter)
+
+info_news <- c("News", size_news, lines_news, 
+               paste("+", as.character(words_news), sep = ""), 
+               min_max_chars_news)
+
+raw_info <- as.data.frame(rbind(info_blogs, info_twitter, info_news))
+colnames(raw_info) = c("Data", "Size (mg)", "Lines", "Words (million)", "Min/Max Chars in Lines")
+rownames(raw_info) = c("data_us_blogs.txt", "data_us_twitter.txt", "data_us_news.txt")
+
+
+kable(raw_info, "latex", booktabs = T,  
+      caption = "Raw Data - Information") %>%
+        kable_styling(latex_options = "hold_position")
+```
+
+## The current report
+In the current report, we analyze the databases, and we remove unimportant lines and those that include some profanity expressions/words. Unimportant lines are the lines that, excluding separators, numbers, punctuations, and stopwords, are empty. 
+
+We tokenize/clean a given text data in several levels as follow (each of which with and without prfanity expressions): 
+
+1. Words excluding seperators, numbers, hyphens, punctuations, stopwords, and  sympbols; 
+1. Profanity words/expressions; 
+1. Words excluding seperators, numbers, hyphens, punctuations, stopwords, symbols, and profanity expressions; 
+1. Stemming data. 
+
+We will do some exploratory analysis on the cleaned data as well.  
+
+The structure of the rest of the report is as follows: In [Sec. 2](#sec:tokens),  we tokenize our given text data in several levels. Then, we do some analysis on the tokens. [Sec.3](#sec:cleaning) does the cleaning tasks on the data.  The scripts used in this report to generate results can be found in [Appendix](#app).
+
+
+
+```{r helper-function}
+# a helper function for renaming items 
+nameKeys <- function(i, vec, txt){
+        vec_sub <- substr(vec, i, sapply(vec, nchar))
+        vec <- paste(txt, vec_sub, sep = "")
+}
+
+# find the 
+findMany <- function(df, p){
+        cri <- sum(df$frequency) * p
+        com <- 0
+        ind <- 1
+        for(i in 1:dim(df)[1]){
+                com <- com + df$frequency[i]
+                if(com >= cri){
+                        break
+                }
+                else{
+                        ind <- ind + 1
+                }
+        }
+        ind
+}
+```
+
+# Tokens {#sec:tokens}
+In this section, we tokenize our given text data in several levels.  In [Sec 2.1](#sec:blogs), [Sec 2.2](#sec:twitter), and [Sec 2.3](#sec:news), we deal with the blogs, twitter, and news databases, respectively. In [Sec 2.4](#sec-corpus), we consider the integrated data, i.e.,  the whole corpus. In each section, we first load the data and do some summary on the data. Then, we tokenize the data in several different levels, and analyze their frequency distributions. We then take a look at the profanity expressions in the data. Finally, we clean the stop-words, punctuations, hyphens, symbols, URLs, and profanities out the data. We store the tokenized clean data so that we can use it in next steps.  
+
+
+## Blogs {#sec:blogs}
+
+The blogs dataset contains **`r length(blogs)`** lines (observations), and the number of characters in a line ranges between **`r min_length_blogs`** and **`r max_length_blogs`**. In the following, we summarize the result of tokenizing the data. 
+
+
+```{r tokens-wostp-blogs}
+# Tokenizing Blogs
+tokens_blogs <- tokens(blogs, 
+                       remove_numbers = TRUE,
+                       remove_hyphens = TRUE,
+                       remove_url = TRUE,
+                       remove_symbols = TRUE,
+                       remove_separators = TRUE,
+                       remove_punct = TRUE,
+                       remove_twitter = TRUE)
+
+names(tokens_blogs) <- nameKeys(i = 5, 
+                                vec = names(tokens_blogs), 
+                                txt = "blog")
+
+tokens_blogs <- tokens_tolower(tokens_blogs)
+
+tokens_blogs <- tokens_wordstem(tokens_blogs, language = "english")
+
+tokens_wostp_blogs <- tokens_remove(tokens_blogs, 
+                                          pattern = stopwords('en'))
+
+num_tokens_wostp_blogs <- sapply(tokens_wostp_blogs, length)
+#Maximum number of tokens w/o seps, nums, punctuations, stops in a line
+max_num_tokens_wostp_blogs <- max(num_tokens_wostp_blogs)
+#Minimum number of tokens w/o seps, nums, punctuations, stops in a line
+min_num_tokens_wostp_blogs <- min(num_tokens_wostp_blogs)
+```
+
+Excluding the *seperators, numbers, punctuations, hyphens, URLs, symbols, and stop-words*: (Note that we also *stem the words*.) 
+
+- The number of words in a line of blogs ranges between **`r min_num_tokens_wostp_blogs`** and **`r max_num_tokens_wostp_blogs`**. 
+
+- There is only **`r length(which(num_tokens_wostp_blogs == max_num_tokens_wostp_blogs))`** line with `r max_num_tokens_wostp_blogs` number of words. 
+
+- About **`r round(length(which(num_tokens_wostp_blogs == min_num_tokens_wostp_blogs)) / length(blogs)*100, 2)`%** of the observations (**`r length(which(num_tokens_wostp_blogs == min_num_tokens_wostp_blogs))`** lines) are empty lines. 
+
+```{r profanity-blogs}
+# Profanity expressions in blogs
+bad_words <- read_lines("rawData/bad_words.txt")
+
+tokens_bad_blogs <- tokens_select(tokens_wostp_blogs, 
+                                  pattern = bad_words, 
+                                  selection = "keep")
+
+num_tokens_bad_blogs <- sapply(tokens_bad_blogs, length)
+#Maximum number of bad tokens in a line
+max_num_tokens_bad_blogs <- max(num_tokens_bad_blogs)
+#Minimum number of bad tokens in a line
+min_num_tokens_bad_blogs <- min(num_tokens_bad_blogs)
+blogs_bad_dfm <- dfm(tokens_bad_blogs)
+```
+
+- The number of profanities in a line ranges between **`r min_num_tokens_bad_blogs`** and **`r max_num_tokens_bad_blogs`**.^[We have used https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words as a reference of profanities.] 
+
+- There is only **`r length(which(num_tokens_bad_blogs == max_num_tokens_bad_blogs))`** line with maximum number of profanity expressions. 
+
+- About **`r round(length(which(num_tokens_bad_blogs > 0)) / length(blogs)*100, 2)`%** of the observations (**`r length(which(num_tokens_bad_blogs > 0))`** lines) include some profanities. 
+
+- The number of unique profanities appearing in blogs is **`r nfeat(blogs_bad_dfm)`**.^[Our dataset of profanities include 376 items.] 
+
+A Word-Cloud for the blogs data, excluding profanities, hyphens, URLs, symbols, stop-words, and numbers, is represented in Fig. \ref{fig:worldcloud-blogs}.  
+
+```{r worldcloud-blogs,  out.width = '80%', fig.cap="A Word-Cloud for the blogs dataset (excl. stopwords, numbers, profanities)"}
+#tokens-wostpbad-blogs
+
+tokens_wostp_blogs_clean <- tokens_remove(tokens_wostp_blogs, 
+                                             pattern = bad_words)
+#Worldcloud - blogs - wosepnumpnct
+set.seed(1000)
+blogs_wostpbad_dfm <- dfm(tokens_wostp_blogs_clean)
+textplot_wordcloud(blogs_wostpbad_dfm, random_order = FALSE,
+                    rotation = .25, 
+                    color = RColorBrewer::brewer.pal(8,"Dark2"))
+```
+
+Fig. \ref{fig:freq-plot-blogs} represents the top 30 most-frequent words appearing in the blogs data set.
+
+```{r freq-plot-blogs, out.width = '80%', fig.cap="Top 30 frequent words in the blogs data (excl. stop-words, numbers, profanities)"}
+# Frequency Plot - blogs
+stat_blogs_wostpbad <- textstat_frequency(blogs_wostpbad_dfm)
+# visualization with ggplot
+ggplot(stat_blogs_wostpbad[1:30, ], 
+       aes(x = reorder(feature, frequency), 
+            y = frequency))  +
+        geom_col() +
+        xlab(NULL) + 
+        coord_flip() 
+```
+
+
+## Twitter {#sec:twitter}
+
+The twitter dataset contains **`r length(twitter)`** lines, and the number of characters in a line ranges between **`r min_length_twitter`** and **`r max_length_twitter`**. In the following, we summarize the result of tokenizing the data. 
+
+```{r tokens-wostp-twitter}
+tokens_twitter <- tokens(twitter, 
+                       remove_numbers = TRUE,
+                       remove_hyphens = TRUE,
+                       remove_url = TRUE,
+                       remove_symbols = TRUE,
+                       remove_separators = TRUE,
+                       remove_punct = TRUE, 
+                       remove_twitter = TRUE)
+
+names(tokens_twitter) <- nameKeys(i = 5, 
+                                vec = names(tokens_twitter), 
+                                txt = "twitter")
+
+tokens_twitter <- tokens_tolower(tokens_twitter)
+
+tokens_twitter <- tokens_wordstem(tokens_twitter, language = "english")
+
+tokens_wostp_twitter <- tokens_remove(tokens_twitter, 
+                                            pattern = stopwords('en'))
+
+num_tokens_wostp_twitter <- sapply(tokens_wostp_twitter, length)
+#Maximum number of tokens w/o seps, nums, punctuations, stops in a line
+max_num_tokens_wostp_twitter <- max(num_tokens_wostp_twitter)
+#Minimum number of tokens w/o seps, nums, punctuations, stops in a line
+min_num_tokens_wostp_twitter <- min(num_tokens_wostp_twitter)
+```
+
+Excluding the *seperators, numbers, punctuations, hyphens, URLs, symbols, and stop-words*: (Note again that we also *stem the words*.) 
+
+- The number of words in a line ranges between **`r min_num_tokens_wostp_twitter`** and **`r max_num_tokens_wostp_twitter`**. 
+
+- There is only **`r length(which(num_tokens_wostp_twitter == max_num_tokens_wostp_twitter))`** line with `r max_num_tokens_wostp_twitter` number of words. 
+
+- About **`r round(length(which(num_tokens_wostp_twitter == min_num_tokens_wostp_twitter)) / length(twitter)*100, 2)`%** of the observations (**`r length(which(num_tokens_wostp_twitter == min_num_tokens_wostp_twitter))`** lines) are empty lines.
+
+```{r profanity-twitter}
+# Profanity expressions in twitter
+tokens_bad_twitter <- tokens_select(tokens_wostp_twitter, 
+                                    pattern = bad_words, 
+                                    selection = "keep")
+num_tokens_bad_twitter <- sapply(tokens_bad_twitter, length)
+#Maximum number of bad tokens in a line
+max_num_tokens_bad_twitter <- max(num_tokens_bad_twitter)
+#Minimum number of bad tokens in a line
+min_num_tokens_bad_twitter <- min(num_tokens_bad_twitter)
+twitter_bad_dfm <- dfm(tokens_bad_twitter)
+```
+
+- The number of profanities in a line ranges between **`r min_num_tokens_bad_twitter`** and **`r max_num_tokens_bad_twitter`**. 
+
+- There is only **`r length(which(num_tokens_bad_twitter == max_num_tokens_bad_twitter))`** line with maximum number of profanities. 
+
+- About **`r round(length(which(num_tokens_bad_twitter > 0)) / length(twitter)*100, 2)`%** of the observations **`r length(which(num_tokens_bad_twitter > 0))`** lines include some profanities. 
+
+- The number of unique profanities appearing in the twitter dataset is **`r nfeat(twitter_bad_dfm)`**.  
+
+A Word-Cloud for the twitter data, excluding profanities, stop-words, hyphens, URLs, symbols, and numbers, is represented in Fig. \ref{fig:worldcloud-twitter}.  
+
+```{r worldcloud-twitter,  out.width = '80%', fig.cap="A Word-Cloud for the twitter dataset (excl. stopwords, numbers, profanities)"}
+#tokens-wostpbad-twitter
+tokens_wostp_twitter_clean <- tokens_remove(tokens_wostp_twitter, 
+                                             pattern = bad_words)
+#Worldcloud - twitter - wosepnumpnct
+set.seed(1000)
+twitter_wostpbad_dfm <- dfm(tokens_wostp_twitter_clean)
+textplot_wordcloud(twitter_wostpbad_dfm, random_order = FALSE,
+                    rotation = .25, 
+                    color = RColorBrewer::brewer.pal(8,"Dark2"))
+```
+
+Fig. \ref{fig:freq-plot-twitter} represents the top 30 most-frequent words appearing in the twitter data set.
+
+```{r freq-plot-twitter, out.width = '80%', fig.cap="Top 30 frequent words in the twitter data (excl. stop-words, numbers, profanities)"}
+# Frequency Plot - twitter
+stat_twitter_wostpbad <- textstat_frequency(twitter_wostpbad_dfm)
+# Visualization with ggplot
+ggplot(stat_twitter_wostpbad[1:30, ], 
+       aes(x = reorder(feature, frequency), 
+            y = frequency))  +
+        geom_col() +
+        xlab(NULL) + 
+        coord_flip() 
+```
+
+
+## News {#sec:news}
+
+The news dataset contains **`r length(news)`** lines, and the number of characters in a line ranges between **`r min_length_news`** and **`r max_length_news`**. In the following, we summarize the result of tokenizing the data. 
+
+
+```{r tokens-wostp-news}
+tokens_news <- tokens(news, 
+                      remove_numbers = TRUE,
+                      remove_hyphens = TRUE,
+                      remove_url = TRUE,
+                      remove_symbols = TRUE,
+                      remove_separators = TRUE,
+                      remove_punct = TRUE,
+                      remove_twitter = TRUE)
+
+names(tokens_news) <- nameKeys(i = 5, 
+                                vec = names(tokens_news), 
+                                txt = "news")
+
+tokens_news <- tokens_tolower(tokens_news)
+
+tokens_news <- tokens_wordstem(tokens_news, language = "english")
+
+tokens_wostp_news <- tokens_remove(tokens_news, 
+                                         pattern = stopwords('en'))
+
+num_tokens_wostp_news <- sapply(tokens_wostp_news, length)
+#Maximum number of tokens w/o seps, nums, punctuations, stops in a line
+max_num_tokens_wostp_news <- max(num_tokens_wostp_news)
+#Minimum number of tokens w/o seps, nums, punctuations, stops in a line
+min_num_tokens_wostp_news <- min(num_tokens_wostp_news)
+```
+
+Excluding the *seperators, numbers, punctuations, hyphens, URLs, symbols, and stop-words*: (Note again that we work on *stemmed* tokens.) 
+
+- The number of words in a line of news ranges between **`r min_num_tokens_wostp_news`** and **`r max_num_tokens_wostp_news`**. 
+
+- There is only **`r length(which(num_tokens_wostp_news == max_num_tokens_wostp_news))`** line with `r max_num_tokens_wostp_news` number of words. 
+
+- About **`r round(length(which(num_tokens_wostp_news == min_num_tokens_wostp_news)) / length(news)*100, 2)`%** of the observations (**`r length(which(num_tokens_wostp_news == min_num_tokens_wostp_news))`** lines) are empty lines.
+
+```{r profanity-news}
+# Profanity expressions in news
+tokens_bad_news <- tokens_select(tokens_wostp_news, 
+                                 pattern = bad_words, 
+                                 selection = "keep")
+num_tokens_bad_news <- sapply(tokens_bad_news, length)
+#Maximum number of bad tokens in a line
+max_num_tokens_bad_news <- max(num_tokens_bad_news)
+#Minimum number of bad tokens in a line
+min_num_tokens_bad_news <- min(num_tokens_bad_news)
+news_bad_dfm <- dfm(tokens_bad_news)
+```
+
+- The number of profanity expressions/words in a line ranges between **`r min_num_tokens_bad_news`** and **`r max_num_tokens_bad_news`**. 
+
+- There is only **`r length(which(num_tokens_bad_news == max_num_tokens_bad_news))`** line with maximum number of profanity expressions. 
+
+- About **`r round(length(which(num_tokens_bad_news > 0)) / length(news)*100, 2)`%** of the observations (**`r length(which(num_tokens_bad_news > 0))`** lines) include some profanity. 
+
+- The number of unique profanities appearing in news is **`r nfeat(news_bad_dfm)`**. 
+
+A Word-Cloud for the news data, excluding profanities, stop-words, hyphens, URLs, symbols, and numbers, is represented in Fig. \ref{fig:worldcloud-news}.  
+
+```{r worldcloud-news,  out.width = '80%', fig.cap="A Word-Cloud for the news dataset (excl. stopwords, numbers, profanities)"}
+#tokens-wostpbad-news
+tokens_wostp_news_clean <- tokens_remove(tokens_wostp_news, 
+                                             pattern = bad_words)
+#Worldcloud - news - wosepnumpnct
+set.seed(1000)
+news_wostpbad_dfm <- dfm(tokens_wostp_news_clean)
+textplot_wordcloud(news_wostpbad_dfm, random_order = FALSE,
+                    rotation = .25, 
+                    color = RColorBrewer::brewer.pal(8,"Dark2"))
+```
+
+ Fig. \ref{fig:freq-plot-news} represents the top 30 most-frequent words appearing in the news data set.
+
+```{r freq-plot-news, out.width = '80%', fig.cap="Top 30 frequent words in the news data (excl. stop-words, numbers, profanities)"}
+# Frequency Plot - news
+stat_news_wostpbad <- textstat_frequency(news_wostpbad_dfm)
+# Visualization with ggplot
+ggplot(stat_news_wostpbad[1:30, ], 
+       aes(x = reorder(feature, frequency), 
+            y = frequency))  +
+        geom_col() +
+        xlab(NULL) + 
+        coord_flip() 
+```
+
+## The Curpos {#sec-corpus}
+In this section, we consider the integrated data. Excluding the *seperators, numbers, punctuations, URLs, hyphens, symbols, and stop-words*, the summary of the data is as follows: (Note again that we *stem the words*.)
+
+```{r tokens-wostp-all}
+
+length_all <- length(blogs) + length(news) + length(twitter)
+
+tokens_all <- append(append(tokens_blogs, tokens_twitter), tokens_news)
+
+
+tokens_wostp_all <- append(append(tokens_wostp_blogs, 
+                                           tokens_wostp_twitter), 
+                                    tokens_wostp_news)
+
+num_tokens_wostp_all <- sapply(tokens_wostp_all, length)
+#Maximum number of tokens w/o seps, nums, punctuations, stops in a line
+max_num_tokens_wostp_all <- max(num_tokens_wostp_all)
+#Minimum number of tokens w/o seps, nums, punctuations, stops in a line
+min_num_tokens_wostp_all <- min(num_tokens_wostp_all)
+```
+
+
+
+- The number of words in a line of the integrated data ranges between **`r min_num_tokens_wostp_all`** and **`r max_num_tokens_wostp_all`**. 
+
+- There is only **`r length(which(num_tokens_wostp_all == max_num_tokens_wostp_all))`** line with `r max_num_tokens_wostp_all` number of words. 
+
+- About **`r round(length(which(num_tokens_wostp_all == min_num_tokens_wostp_all)) / length_all*100, 2)`%** (**`r length(which(num_tokens_wostp_all == min_num_tokens_wostp_all))`** lines) of the observations are empty lines. 
+
+```{r profanity-all}
+# Profanity expressions in all
+tokens_bad_all <- tokens_select(tokens_wostp_all, 
+                                pattern = bad_words, 
+                                selection = "keep")
+num_tokens_bad_all <- sapply(tokens_bad_all, length)
+#Maximum number of bad tokens in a line
+max_num_tokens_bad_all <- max(num_tokens_bad_all)
+#Minimum number of bad tokens in a line
+min_num_tokens_bad_all <- min(num_tokens_bad_all)
+all_bad_dfm <- dfm(tokens_bad_all)
+```
+
+- The number of profanities in a line of the corpus ranges between **`r min_num_tokens_bad_all`** and **`r max_num_tokens_bad_all`**. 
+
+- There is only **`r length(which(num_tokens_bad_all == max_num_tokens_bad_all))`** line with maximum number of profanity expressions. 
+
+- About **`r round(length(which(num_tokens_bad_all > 0)) / length_all*100, 2)`%** of the observations (i.e., **`r length(which(num_tokens_bad_all > 0))`** lines) include some profanities.  
+
+- The number of unique profanities appearing in the dataset is **`r nfeat(all_bad_dfm)`**. 
+
+
+A Word-Cloud for the integrated data, excluding profanities, stop-words, URLs, symbols, and numbers, is represented in Fig. \ref{fig:worldcloud-all}.  
+
+```{r worldcloud-all,  out.width = '80%', fig.cap="A Word-Cloud for corpus", warning=FALSE}
+#tokens-wostpbad-all
+tokens_wostp_all_clean <- tokens_remove(tokens_wostp_all, 
+                                             pattern = bad_words)
+#Worldcloud - all - wosepnumpnct
+set.seed(1000)
+all_wostpbad_dfm <- dfm(tokens_wostp_all_clean)
+textplot_wordcloud(all_wostpbad_dfm, random_order = FALSE,
+                    rotation = .25, 
+                    color = RColorBrewer::brewer.pal(8,"Dark2"))
+```
+
+
+Fig. \ref{fig:freq-plot-all} represents the top 30 most-frequent words appearing in the corpus.
+
+```{r freq-plot-all, out.width = '80%', fig.cap="Top 30 frequent words in the integrated data (excl. stop-words, numbers, profanities)"}
+# Frequency Plot - all
+stat_all_wostpbad <- textstat_frequency(all_wostpbad_dfm)
+# Visualization with ggplot 
+ggplot(stat_all_wostpbad[1:30, ], 
+       aes(x = reorder(feature, frequency), 
+            y = frequency))  +
+        geom_col() +
+        xlab(NULL) + 
+        coord_flip() 
+```
+
+```{r per-all}
+# Getting frequency 50, 90, ...%
+df_stat_all <- as.data.frame(stat_all_wostpbad)
+freq1_all <- df_stat_all %>% filter(frequency <= 1)
+freqless5_all <- df_stat_all %>% filter(frequency <= 5)
+num_words_50per <- findMany(df_stat_all, 0.5)
+num_words_90per <- findMany(df_stat_all, 0.9)
+num_words_95per <- findMany(df_stat_all, 0.95)
+num_words_99per <- findMany(df_stat_all, 0.99)
+```
+
+According to the document frequencies of the integrated data: 
+
+- ${\bf `r num_words_50per`}$ unique words (out of `r dim(df_stat_all)[1]` features) cover 50% of all word instances in the integrated data. 
+
+- ${\bf `r num_words_90per`}$ unique words (out of `r dim(df_stat_all)[1]` features) cover 90% of all word instances in the integrated data. 
+
+- ${\bf `r num_words_95per`}$ unique words (out of `r dim(df_stat_all)[1]` features) cover 95% of all word instances in the integrated data.
+
+- ${\bf `r num_words_99per`}$ unique words (out of `r dim(df_stat_all)[1]` features) cover 99% of all word instances in the integrated data.
+
+- There are ${\bf `r dim(freqless5_all)[1]`}$ words with less than 5 frequencies in the corpus, including   $`r dim(freq1_all)[1]`$ words with only 1 frequency. 
+
+We are going to clean the words with less frequency out of the data. That is we keep at least the top ${\bf `r num_words_90per`}$ features/words to cover at least 90% of all word instances in the data. (See [The whole Corpus](#app:corpus) for the corresponding scripts.)
+
+```{r clean_profanity}
+# Profanity filtering --> tokens_clean
+
+tokens_clean <- tokens_remove(tokens_all, 
+                              pattern = bad_words, 
+                              padding = TRUE)
+```
+
+
+```{r clean-lessFreq-all}
+# getting features to be excluded --> tokens_clean
+
+# frequency criteria
+freq_cri <- df_stat_all[num_words_90per, ]$frequency
+
+# features to be excluded
+exc_feats <- df_stat_all %>% 
+        filter(frequency < freq_cri) %>% 
+        select(feature)
+
+# clean less frequent tokens
+tokens_clean <- tokens_remove(tokens_clean, 
+                              pattern = exc_feats, 
+                              padding = TRUE)
+```
+
+```{r store-clean-all, cache=FALSE}
+# save cleaned all
+saveRDS(tokens_clean, 
+        "cleanData/tokens/tokens_clean.rds")
+```
+
+# Conclusion
+We started with a very large corpus with millions of words. We tokenized the data and performed some frequency analysis on the words.  We cleaned out *profanities, punctuations, numbers, symbols, urls, separators, and words with less frequency* from the data. Moreover, we stemmed the words in the data.  Also, we stored the corresponding cleaned tokenized data to be used in the next steps.  
+
+
+The next step is to do analysis on *n-grams*.    
+
+# Appendix {-#app}
+
+## Packages/Sources/Functions {-#app:packages}
+
+```{r, ref.label='libraries', eval=FALSE, echo=TRUE}
+```
+
+
+```{r, ref.label='helper-function', eval=FALSE, echo=TRUE}
+```
+
+## Table: Raw Data Info {-#app:table}
+```{r, ref.label='tab-raw-info', eval=FALSE, echo=TRUE}
+```
+
+## Blogs {-#app:blogs}
+
+```{r, ref.label='tokens-wostp-blogs', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='profanity-blogs', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='profanity-blogs-summary', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='worldcloud-blogs', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='freq-plot-blogs', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='per-blogs', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='blogs-lessFreq', eval=FALSE, echo=TRUE}
+```
+
+## Twitter {-#app:twitter}
+
+```{r, ref.label='tokens-wostp-twitter', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='profanity-twitter', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='profanity-twitter-summary', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='worldcloud-twitter', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='freq-plot-twitter', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='per-twitter', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='twitter-lessFreq', eval=FALSE, echo=TRUE}
+```
+
+## News {-#app:news}
+
+```{r, ref.label='tokens-wostp-news', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='profanity-news', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='profanity-news-summary', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='worldcloud-news', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='freq-plot-news', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='per-news', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='news-lessFreq', eval=FALSE, echo=TRUE}
+```
+
+## The Corpus {-#app:corpus}
+
+```{r, ref.label='tokens-wostp-all', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='profanity-all', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='worldcloud-all', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='freq-plot-all', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='per-all', eval=FALSE, echo=TRUE}
+```
+
+```{r, ref.label='clean_profanity', echo=TRUE, eval=FALSE}
+```
+
+```{r, ref.label='clean-lessFreq-all', echo=TRUE, eval=FALSE}
+```
+
+```{r, ref.label='store-clean-all', echo=TRUE, eval=FALSE}
+```
