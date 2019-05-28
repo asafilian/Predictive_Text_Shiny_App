@@ -1,8 +1,7 @@
 ---
-title: 'Milestone Report'
-subtitle: 'Project: "A Predictive Text Shiny App"'
-author: "Aliakbar Safilian^[a.a.safilian@gmail.com]"
-date: "May 15, 2019"
+title: "Analysis Report: A Shiny Predictive Text Product"
+author: "Aliakbar Safilian"
+date: "May 13, 2019"
 output: 
         bookdown::pdf_document2:
           number_sections: yes
@@ -10,8 +9,7 @@ urlcolor: blue
 header-includes:
   - \usepackage{color}
   - \usepackage{float}
----
----
+--- 
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(fig.align="center", echo = FALSE, comment = "", fig.pos = 'H')
@@ -38,6 +36,8 @@ require(data.table)
 
 #---- Some Auxiliary Functions -----#
 
+'%!in%' <- function(x,y)!('%in%'(x,y))
+
 # find the coverage
 findMany <- function(dt, p){
         cri <- sum(dt$freq) * p
@@ -56,7 +56,7 @@ findMany <- function(dt, p){
 
 
 # Introduction
-<!--## The Project-->
+## What?
 In this project, we are going to build a  *predictive text Shiny app*, i.e., a web-based version of products like Google Search and SwiftKey Keyboards. To this end, we start with analyzing a large corpus of text documents to discover the relationship between words. The process involves cleaning and analyzing text data, then building and sampling from a predictive text model. Finally, we will build our shiny app. 
 
 The data for this project has been provided by the Swiftkey company.^[The basic training data can be found  [here](#
@@ -67,10 +67,10 @@ https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip)
 - `en_us.twitter.txt` 
 
 
-<!--## The Current Report -->
+## How?
 
 
-In the current report, we preprocess and analyze the data. Our original corpus includes more than *4 million lines*, and over *100 million words*. Due to computational resource limitations, we random sub *sample* the data and get a fraction (30%) of the data. 
+In the current report, we preprocess and analyze the data. Our original corpus includes more than *4 million lines*, and over *100 million words*. Due to computational resource limitations, we random sub *sample* the data and get a fraction (15%) of the data. 
 
 Next, we perform the following *preprossing steps* on the sample data: 
 
@@ -180,23 +180,25 @@ rownames(raw_info) = NULL
 
 #---- A Table of Some Info about the Raw Data -----#
 
-kable(raw_info, caption = "Raw Data - Information") %>%
-        kable_styling(bootstrap_options = "striped", full_width = F) %>%
+kable(raw_info, "latex", booktabs = T,  
+      caption = "Raw Data - Information") %>%
+        kable_styling(latex_options = "hold_position") %>%
         footnote(general =  c("`Words`: approximate in million", 
-                              "`Range nchars`: range and avgerage number of chars in lines", 
-                              "`Avg nchars`: range and avgerage number of chars in lines"))
+                              "`Range nchars`: range and avg number of chars in lines",
+                              "`Avg nchars`: range and avgerage number of chars in lines"
+                              ))
 ```
 
-As we see in the above table, the original corpus includes over 70 million words and over 100 million sentences. The main constraint in this project is the computational resource (i.e., time and memory). To alleviate this issue, we get a 30% random sample fraction of the data. The following table represents some information about the sample. Since the average number of characters have not changed much, the sample looks a reasonable one. 
+As we see in the above table, the original corpus includes over 70 million words and over 100 million sentences. The main constraint in this project is the computational resource (i.e., time and memory). To alleviate this issue, we get a 10% random sample fraction of the data. The following table represents some information about the sample. Since the average number of characters have not changed much, the sample looks a reasonable one. 
 
 ```{r corpus, cache=TRUE}
 
 #--- Sampling the Data ---#
 
 set.seed(2019)
-blogs_ind <- sample(length(blogs), length(blogs) * 0.3)
-twitter_ind <- sample(length(twitter), length(twitter) * 0.3)
-news_ind <- sample(length(news), length(news) * 0.3)
+blogs_ind <- sample(length(blogs), length(blogs) * 0.1)
+twitter_ind <- sample(length(twitter), length(twitter) * 0.1)
+news_ind <- sample(length(news), length(news) * 0.1)
 
 blogs_sample <- blogs[blogs_ind]
 twitter_sample <- twitter[twitter_ind]
@@ -286,9 +288,10 @@ colnames(raw_info_sample) = c("Data",
                        "Avg nchars")
 rownames(raw_info_sample) = NULL
 
+kable(raw_info_sample, "latex", booktabs = T,  
+      caption = "Random Sampled Raw Data - Information") %>%
+        kable_styling(latex_options = "hold_position")
 
-kable(raw_info_sample, caption = "Random Sampled Raw Data - Information") %>%
-        kable_styling(bootstrap_options = "striped", full_width = F) 
 ```
 
 Now, we extract the unigrams *excluding numbers, hyphens, URLs, separators, punctuations*, and (twitter) *symbols*. Moreover, we convert the words to lower-case. We also extract the *profanities* and *non-english* words in the corpuse. A summary of the results is represented in the following table.^[We have used https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words as a reference of profanities, whcih contains 376 items.]
@@ -307,10 +310,13 @@ unigrams <- tokens(corp_sample,
                        remove_twitter = TRUE)
 # to lower case
 unigrams <- tokens_tolower(unigrams)
-```
+``` 
 
 ```{r tidy-dfm-uni, cache=TRUE}
-# DFM of Unigrams
+
+#---- DFM of Unigrams ---#
+
+# DFM
 dfm_uni <- dfm(unigrams)
 # Tidy the DFM of Unigrams
 dt_uni <- tidy(dfm_uni) 
@@ -336,7 +342,6 @@ noneng_ind <- grepl("[^\x01-\x7F]+", dt_uni$term)
 # A data table with non-english words
 dt_uni_neng <- dt_uni[which(noneng_ind), ] 
 ```
-
 
 ```{r tab-info-uni, cache=TRUE}
 
@@ -378,9 +383,9 @@ colnames(info_uni) <- c("Words",
                         #"Unique Non-English",
                         "Non-English")
 
-kable(info_uni, 
-      caption = "Unigrams (Words, Profanities, Non-English Words) in the sample Corpus") %>%
-        kable_styling(bootstrap_options = "striped", full_width = F)
+kable(info_uni, "latex", booktabs = T,  
+      caption = "Unigrams (Words, Profanities, Non-English Words) in the Corpus") %>%
+        kable_styling(latex_options = "hold_position")
 
 ```
 
@@ -417,15 +422,15 @@ dt_uni_freq <- dt_uni_clean %>%
 ```
 
 
-The range of the frequency of words in our clean data is now between $1$ and $`r round(max(dt_uni_freq$freq)/1000000, 2)`$ million. We categorize them into $10$ groups based on their frequencies in the corpus. See the following table, where it is shown that the most of the words are in the first category, i.e., the least frequenct one.
+The range of the frequency of words in our clean data is now between $1$ and $`r round(max(dt_uni_freq$freq)/1000000, 2)`$ million. We categorize them into $5$ groups based on their frequencies in the corpus. See the following table, where it is shown that the most of the words are in the first category, i.e., the least frequenct one.
 
-```{r tab-tidy-freq-uni-cut}
+```{r tab-tidy-freq-uni-cut, cache=TRUE}
 
 #----- Frequency Groups - Unigrams ----#
 
 dt_uni_freq_grp <- dt_uni_freq
 dt_uni_freq_grp$bin <- cut(dt_uni_freq_grp$freq, 
-                                breaks = 10, labels = 1:10)
+                                breaks = 5, labels = 1:5)
 dt_uni_freq_grp <- dt_uni_freq_grp %>%
         group_by(bin) %>%
         summarize(min_freq = round(min(freq), 2),
@@ -441,9 +446,10 @@ colnames(dt_uni_freq_grp) <- c("Category",
                                "Words", 
                                "Instances")
 
-kable(dt_uni_freq_grp, 
+kable(dt_uni_freq_grp, "latex", booktabs = T,  
       caption = "Frequency Groups - Unigrams") %>%
-        kable_styling(bootstrap_options = "striped", full_width = F)
+        kable_styling(latex_options = "hold_position")
+
 ```
 
 
@@ -452,7 +458,7 @@ kable(dt_uni_freq_grp,
 The following figure represents the top 30 most frequenct words in the *clean* corpus with their frequencies.
 
 
-```{r freq-plot-uni, out.width = '80%'}
+```{r freq-plot-uni, out.width = '80%', cache=TRUE}
 
 #---- Frequency Plot - unigrams ----#
 
@@ -470,8 +476,6 @@ ggplot(dt_uni_freq[1:30, ],
 
 As we see in the above frequency plot, the most frequent words in the sample corpus are *stop-words*. The following plot represents the 30 top frequenct words excluding the stop-words^[However, note that we do not clean the stop-words out the unigrams.] A Word-Cloud for the data, excluding profanities, hyphens, URLs, symbols, stop-words, and numbers, follows it.  
 
-
-
 ```{r tidy-freq-uni-wostp}
 
 #---- DFM for unigrams excl. stop-words ---# 
@@ -487,7 +491,7 @@ dt_uni_freq_wostp <- dt_uni_clean_wostp %>%
 ```
 
 
-```{r freq-plot-uni-wostp, out.width = '80%'}
+```{r freq-plot-uni-wostp, out.width = '80%', cache=TRUE}
 
 # --- Frequency Plot - unigrams ----#
 
@@ -501,14 +505,15 @@ ggplot(dt_uni_freq_wostp[1:30, ],
         ggtitle("Top 30 most frequent words excluding stopwords")
 ```
 
-```{r worldcloud-clean-wostp,  out.width = '80%', fig.cap="A Word-Cloud for unigrams (excl. stopwords, numbers, profanities, URLs, symbols)", warning=FALSE}
+```{r worldcloud-clean-wostp,  out.width = '80%', fig.cap="A Word-Cloud for unigrams (excl. stopwords, numbers, profanities, URLs, symbols)", warning=FALSE, cache=TRUE}
 
 #--- Worldcloud - unigrams ---#
 
 set.seed(1000)
 textplot_wordcloud(dfm_uni_clean_wostp, random_order = FALSE,
                     rotation = .25, 
-                    color = RColorBrewer::brewer.pal(8,"Dark2"))
+                    color = RColorBrewer::brewer.pal(8,"Dark2")
+                   )
 ```
 
 
@@ -551,7 +556,13 @@ dt_bi_freq_sep <- data.frame(
         freq = dt_bi_freq$freq)
 ```
 
-```{r freq-plot-bi, out.width = '80%'}
+```{r duplicate-bi, cache=TRUE}
+dt_bi_freq_sep <- dt_bi_freq_sep[!duplicated(dt_bi_freq_sep %>% 
+                                                     select(word1, word2)), ]
+```
+
+
+```{r freq-plot-bi, out.width = '80%', cache=TRUE}
 
 #----- Frequency Plot - bigrams ----#
 
@@ -565,6 +576,7 @@ ggplot(dt_bi_freq_sep[1:30, ],
         ggtitle("Top 30 most frequent bigrams")
 ```
 
+
 The following table represents some information about the categorized version of bigrams based on their frequencies. Like uni-grams, the most of the bigrams are in the least frequent one.
 
 ```{r tab-tidy-freq-bi-cut, cache=TRUE}
@@ -573,7 +585,7 @@ The following table represents some information about the categorized version of
 
 dt_bi_freq_grp <- dt_bi_freq_sep
 dt_bi_freq_grp$bin <- cut(dt_bi_freq_grp$freq, 
-                                breaks = 10, labels = 1:10)
+                                breaks = 5, labels = 1:5)
 dt_bi_freq_grp <- dt_bi_freq_grp %>%
         group_by(bin) %>%
         summarize(min_freq = round(min(freq), 2),
@@ -589,12 +601,12 @@ colnames(dt_bi_freq_grp) <- c("Category",
                                "Words", 
                                "Instances")
 
-kable(dt_bi_freq_grp, 
+kable(dt_bi_freq_grp, "latex", booktabs = T,  
       caption = "Frequency Groups - Bigrams") %>%
-        kable_styling(bootstrap_options = "striped", full_width = F)
+        kable_styling(latex_options = "hold_position")
+
 ```
 
-<!-- TRIGRAMS --->
 The following figure represents the 30 most frequenct trigrams in our corpus. It is followed by a table which represents some information about the  trigrams categorized into 10 groups based on their frequencies. 
 
 ```{r trigrams, cache=TRUE}
@@ -634,7 +646,12 @@ dt_tri_freq_sep <- data.frame(
         freq = dt_tri_freq$freq)
 ```
 
-```{r freq-plot-tri, out.width = '80%'}
+```{r duplicate-tri, cache=TRUE}
+dt_tri_freq_sep <- dt_tri_freq_sep[!duplicated(dt_tri_freq_sep %>% 
+                                                     select(word1, word2, word3)), ]
+```
+
+```{r freq-plot-tri, out.width = '80%', cache=TRUE}
 
 #----- Frequency Plot - trigrams ------#
 
@@ -655,7 +672,7 @@ ggplot(dt_tri_freq_sep[1:30, ],
 
 dt_tri_freq_grp <- dt_tri_freq_sep
 dt_tri_freq_grp$bin <- cut(dt_tri_freq_grp$freq, 
-                                breaks = 10, labels = 1:10)
+                                breaks = 5, labels = 1:5)
 dt_tri_freq_grp <- dt_tri_freq_grp %>%
         group_by(bin) %>%
         summarize(min_freq = round(min(freq), 2),
@@ -671,9 +688,9 @@ colnames(dt_tri_freq_grp) <- c("Category",
                                "Words", 
                                "Instances")
 
-kable(dt_tri_freq_grp, 
+kable(dt_tri_freq_grp, "latex", booktabs = T,  
       caption = "Frequency Groups - Trigrams") %>%
-        kable_styling(bootstrap_options = "striped", full_width = F)
+        kable_styling(latex_options = "hold_position")
 
 ```
 
@@ -703,24 +720,16 @@ colnames(dt_coverage) = c("Terms",
 rownames(dt_coverage) = c("Uni-Grams", "Bi-Grams", "Tri-Grams")
 
 # Represent the Table
-kable(dt_coverage, 
+kable(dt_coverage, "latex", booktabs = T,  
       caption = "Coverage Table") %>%
-        kable_styling(bootstrap_options = "striped", full_width = F)
+        kable_styling(latex_options = "hold_position")
+
 ```
 
-# Future Work
-Next, I am going to perform an *N-gram modeling*. The steps that I am going to take are as follow:^[Any comments would be much appreciated.] 
 
-1. Index the bi- and tri-grams to speed up calculation.  
-1. Caclculate uni-, bi-, and tri-gram probabilities. 
-1. Add Kneser-Ney smoothing to the probabilities to cover unseen terms. 
-1. Use the Back-off method in the prediction model. 
-1. Evaluate the model. 
+# Appendix {-#app}
 
-
-
-# Scripts {-#app}
-In this section, we can find the scripts used in the main section to create the contents. 
+In this section, we can find the scripts and some mathematical details used in the main section to create the contents. 
 
 ```{r, ref.label='libraries', echo=TRUE, eval=FALSE}
 ```
@@ -798,6 +807,9 @@ In this section, we can find the scripts used in the main section to create the 
 ```
 
 ```{r, ref.label='tidy-freq-bi-sep', echo=TRUE, eval=FALSE}
+```
+
+```{r, ref.label='duplicate-bi', echo=TRUE, eval=FALSE}
 ```
 
 ```{r, ref.label='freq-plot-bi', echo=TRUE, eval=FALSE}
