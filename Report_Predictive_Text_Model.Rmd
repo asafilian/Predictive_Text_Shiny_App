@@ -57,7 +57,7 @@ findMany <- function(dt, p){
 
 
 # Introduction {#intro}
-The  [*Shiny Predictive Text App*](https://asafilian.shinyapps.io/txt_predict_app)^[https://asafilian.shinyapps.io/txt_predict_app] (Fig. \ref{fig:app-page}) is a web-based application suggesting words the end user may wish to insert in a text field. The current report describes the technical aspect of the product. 
+The  [*Shiny Predictive Text App*](https://asafilian.shinyapps.io/as_txtpredict)^[https://asafilian.shinyapps.io/as_txtpredict] (Fig. \ref{fig:app-page}) is a web-based application suggesting words the end user may wish to insert in a text field. The current report describes the technical aspect of the product. 
 
 ```{r app-page, echo=FALSE, fig.cap="The Text Predictive Shiny App", out.width = '100%'}
 knitr::include_graphics("app_image.jpg")
