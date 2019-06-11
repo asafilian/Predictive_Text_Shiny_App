@@ -1,0 +1,46 @@
+Predictive Text App
+========================================================
+author: Aliakbar Safilian
+date: June 10, 2019
+autosize: true
+
+
+What?
+========================================================
+
+* Suggesting words the user may wish to insert in a text field.
+![app](app_image.jpg)
+* The user can choose the language model (n-gram)
+* The user can choose the number of top-suggestions
+
+How? - Preprocessing
+========================================================
+* **Corpus**: 
+  + The original corpus: **4,269,678** Lines & **102,080,244** Words
+  + Random Sampled Corpus: **50%** fraction of the original 
+* **Preprocessing**:  
+  + *lower-case* conversion &  removing *hyphens* 
+  + removing twitter & other *symbols* 
+  + removing *separators* & removing *punctuations* 
+  + removing *numbers* & words containing numbers
+  + removing *profanities* & removing *non-English* words
+  + etc...
+
+How? - Language Modeling
+========================================================
+* **4-Gram** & **3-Gram** Models 
+* Follow the **Markov assumption** 
+* Use the **Kneser-Ney Smoothing** method for n-gram probabilities 
+* **Evaluation**: 
+  + Testing data: *1,392* lines & *28,658* words 
+  + Top-3 Precision: **21.48%** 
+  + Top-1 Precision: **13.45%** 
+  + Memory Used: **109 MB**
+
+Resources
+========================================================
+* [Application](https://asafilian.shinyapps.io/as_txtpredict/) 
+* [Repository](https://github.com/asafilian/Predictive_Text_Shiny_App) 
+* [Technical Report](https://github.com/asafilian/Predictive_Text_Shiny_App/blob/master/Report_Predictive_Text_Model.pdf) 
+
+Any comments would be much appreciated. 
